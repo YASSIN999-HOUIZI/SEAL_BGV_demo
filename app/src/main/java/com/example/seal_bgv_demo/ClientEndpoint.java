@@ -7,6 +7,8 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -24,8 +26,10 @@ public class ClientEndpoint {
     public String response;
     public CountDownLatch latch = new CountDownLatch(1);
     public WebSocketClient webSocketClient;
+    private File fileOutput;
     List<Byte> fileByte=new ArrayList<Byte>();
     private Gson gson = new Gson();
+    public int pos;
 
     public WebSocketClient createWebSocketClient(String url){
         URI uri;
@@ -46,28 +50,58 @@ public class ClientEndpoint {
                 //latch = new CountDownLatch(1);
             }
 
+            private String fileName; // Declare a member variable to store the file name
+            private FileOutputStream fos; // Declare a member variable for file output stream
+
+// ...
+
             @OnMessage(maxMessageSize = 15000000)
             public void onMessage(ByteBuffer buffer) {
-                byte[] answer_data = new byte[buffer.remaining()];
-                buffer.get(answer_data);
                 try {
-                        FileUtils.writeByteArrayToFile(new File(MainActivity.path + "/" + "Answer.data"), answer_data);
+                    // Check if it's the first chunk of the file (name)
+                    if (fileName == null) {
+                        // Read the file name from the buffer
+                        byte[] fileNameBytes = new byte[buffer.remaining()];
+                        buffer.get(fileNameBytes);
+                        fileName = new String(fileNameBytes);
+                        System.out.println("File name received: " + fileName);
+
+                        // Create a new file output stream
+                        File file = new File(MainActivity.path + "/" + fileName);
+                        fos = new FileOutputStream(file);
+                    } else {
+                        // Read the byte data from the buffer
+                        byte[] chunk = new byte[buffer.remaining()];
+                        buffer.get(chunk);
+                        // Write the chunk to the file
+                        fos.write(chunk);
+                        fos.flush();
+
+                        System.out.println("Chunk of binary data received and appended to the file");
+                    }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-                latch.countDown();
+                //latch.countDown();
             }
+
+
 
             @Override
             public void onMessage(String message) {
-                System.out.println(message);
+                System.out.println("this is the response :"+message);
                 response = message;
-                try {
+                if (message.equals("DONE")) {
+                    if (latch != null) {
+                        latch.countDown();
+                    }
+                }
+                /*try {
                     TimeUnit.SECONDS.sleep(2);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-                latch.countDown();
+                latch.countDown();*/
 
             }
             @Override
@@ -97,6 +131,5 @@ public class ClientEndpoint {
         webSocketClient.send(Arrays.copyOfRange(bytes, from, bytes.length));
         webSocketClient.send(name);
     }
-
 }
 
